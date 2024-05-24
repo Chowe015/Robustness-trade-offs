@@ -1,0 +1,391 @@
+---
+title: "Robustness Tradeoff Prokaryotic Community Analysis Workflow"
+author: "Colin Howe, Sofia Roitman, & Amanda Badai"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# First, set your working directory. 
+```{r}
+# Command for setting your work directory
+setwd("C:/Users/Colin Howe/Desktop/PSU Doctoral Program/GCMP_Working/Robustness-trade-offs")
+
+getwd()
+```
+
+# Load the libraries you will be using
+```{r, message=FALSE, warning=FALSE} 
+library(BiocManager)
+library(phyloseq)
+library(dplyr)
+library(qiime2R)
+library(DESeq2)
+library(ade4)
+library(vegan)
+library(RColorBrewer)
+library(tidyverse)
+library(ggplot2)
+library(microbiome)
+library(dendextend)
+library(gplots)
+library(ggrepel)
+library(tidyr)
+library(ggpubr)
+library(cowplot)
+library(RVAideMemoire)
+```
+
+# Create our phyloseq object!
+```{r, Import Qiime Files}
+# Import from qza to phyloseq
+asv <- qza_to_phyloseq("qiime_files/orb_filtered_table.qza")
+
+#### Import Metadata read.table
+metadata <- read.table(file = "qiime_files/orb_trans_mapping.txt",header=T,comment.char="", row.names=1, sep="\t")
+
+### Import Tree file from biom output tree.nwk
+tree <- read_tree("qiime_files/tree.nwk")
+
+### Import taxonomy file
+taxonomy <- read.table(file = "qiime_files/taxonomy.tsv", sep = "\t", header = T ,row.names = 1)
+
+# clean the taxonomy, Greengenes format ##code referenced from Yan Hui: email me@yanh.org github: yanhui09
+tax <- taxonomy %>%
+  select(Taxon) %>% 
+  separate(Taxon, c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"), "; ")
+
+tax.clean <- data.frame(row.names = row.names(tax),
+                        Kingdom = str_replace(tax[,1], "k__",""),
+                        Phylum = str_replace(tax[,2], "p__",""),
+                        Class = str_replace(tax[,3], "c__",""),
+                        Order = str_replace(tax[,4], "o__",""),
+                        Family = str_replace(tax[,5], "f__",""),
+                        Genus = str_replace(tax[,6], "g__",""),
+                        Species = str_replace(tax[,7], "s__",""),
+                        stringsAsFactors = FALSE)
+
+tax.clean[is.na(tax.clean)] <- ""
+tax.clean[tax.clean=="__"] <- ""
+
+for (i in 1:nrow(tax.clean)){
+  if (tax.clean[i,7] != ""){
+    tax.clean$Species[i] <- paste(tax.clean$Genus[i], tax.clean$Species[i], sep = " ")
+  } else if (tax.clean[i,2] == ""){
+    kingdom <- paste("Unclassified", tax.clean[i,1], sep = " ")
+    tax.clean[i, 2:7] <- kingdom
+  } else if (tax.clean[i,3] == ""){
+    phylum <- paste("Unclassified", tax.clean[i,2], sep = " ")
+    tax.clean[i, 3:7] <- phylum
+  } else if (tax.clean[i,4] == ""){
+    class <- paste("Unclassified", tax.clean[i,3], sep = " ")
+    tax.clean[i, 4:7] <- class
+  } else if (tax.clean[i,5] == ""){
+    order <- paste("Unclassified", tax.clean[i,4], sep = " ")
+    tax.clean[i, 5:7] <- order
+  } else if (tax.clean[i,6] == ""){
+    family <- paste("Unclassified", tax.clean[i,5], sep = " ")
+    tax.clean[i, 6:7] <- family
+  } else if (tax.clean[i,7] == ""){
+    tax.clean$Species[i] <- paste("Unclassified ",tax.clean$Genus[i], sep = " ")
+  }
+}
+
+#Format each data as a matrix
+OTU <- otu_table(as.matrix(asv), taxa_are_rows = TRUE)
+tax1 = tax_table(as.matrix(tax.clean))
+
+# Assign metadata
+SAMPLE <- sample_data(metadata)
+
+# Merge data into a single Phyloseq object
+orb_phylo <- phyloseq(OTU,tax1,SAMPLE,tree)
+
+```
+
+# Clean up not target sequences the dataset 
+```{r}
+# Remove features that have only been classified at the kingdom level or classified as mitochondria or Chloroplast
+phylo_noNA <- subset_taxa(orb_phylo, !Phylum %in% c("NA","Unclassified Unassigned",
+                                                    "Unclassified Bacteria",
+                                                    "Unclassified Archaea") &
+                                  Family  != ("Mitochondria") &
+                                    Class   != ("Chloroplast")) ## removed 1678 ASVs
+#remove the outliers
+phylo_Proto <- subset_taxa(phylo_noNA, Family != "Unclassified Proteobacteria") ## removed 232 ASVs 
+
+## Remove samples that contain less than 1 reads
+phylo_nclass = prune_samples(sample_sums(phylo_Proto)>1, phylo_Proto) ## removes two samples
+
+##Rarefication this will be used for statistical comparative analysis at 5000 reads depth we retained 24.5% of the reads and 89% of the sample data
+orb.rarefied <- rarefy_even_depth(phylo_nclass, rngseed=111, sample.size=5000)
+
+orb_phylo
+phylo_noNA
+phylo_Proto
+phylo_nclass
+orb.rarefied
+
+```
+
+# Subset Samples from Primary Phyloseq Object
+```{r}
+# Subset by Time Point 2
+## remove outliers identified in alpha diversity and beta diversity plot. Sample USVI-120 & 212 contain low alpha diversity and USVI-210 showed to be an outlier in the weighted unifrac distance for Orbicella franksi. 
+to_remove <- c("USVI-120", "USVI-212","USVI-210")
+
+orb_prune <- prune_samples(!(sample_names(orb.rarefied) %in% to_remove), orb.rarefied)
+
+# Timepoint Two dataset will contain variation across Transplant and Controls
+time2 <- subset_samples(orb_prune, time_point == "two")
+
+## Subset by time2 and species
+ofav <- subset_samples(time2, species == "O. faveolata")
+ofra <-subset_samples(time2, species == "O. franksi")
+
+## subset non-rarefied samples for bar plots Visualizations and Deseq Analysis 
+ofav_raw <- subset_samples(phylo_nclass, species == "O. faveolata" & time_point == "two")
+ofra_raw <-subset_samples(phylo_nclass, species == "O. franksi" & time_point == "two")
+
+## Assign phyloseq object as a data frame
+time2_df <-data.frame(sample_data(time2))
+
+# Data Frame rarefied for timepoint 2 by species
+ofavdf <- data.frame(sample_data(ofav))
+ofradf <- data.frame(sample_data(ofra))
+
+# Data Frame for non-rarefied and non-normal by species for Differential Abundance analysis
+ofav_raw_df <- data.frame(sample_data(ofav_raw))
+ofra_raw_df <- data.frame(sample_data(ofra_raw))
+
+```
+
+# Build DISTANCE MATRICES
+```{r}
+## Distance Matrix for rareified All samples 
+bray_all <- phyloseq::distance(time2, method="bray")
+wuni_all <- phyloseq::distance(time2, method="wUniFrac")
+
+## Distance Matrix for rareified O. faveolata
+bray_ofav <- phyloseq::distance(ofav, method="bray")
+wuni_ofav <- phyloseq::distance(ofav, method="wUniFrac")
+
+## Distance Matrix for rareified O. franksi
+bray_ofra <- phyloseq::distance(ofra, method="bray")
+wuni_ofra <- phyloseq::distance(ofra, method="wUniFrac")
+
+
+```
+
+# Let's run some PERMANOVAs!
+```{r}
+## Full Comparison with Species and treatment with rarefied Samples
+
+## combine distance matrix 
+distance_methods <-c("bray_all","wuni_all")
+
+# Set the seed and run for loop 
+set.seed(111)
+for (i in distance_methods){ 
+  form <- as.formula(paste(i,"species*depth", sep="~"))
+  print(form)
+ adonis2(form, data=time2_df)->result
+ print(result)
+ } 
+
+## O. Faveolata 
+distance_method_ofav <-c("bray_ofav","wuni_ofav")
+# Set the seed and run for loop 
+set.seed(111)
+for (i in distance_method_ofav){ 
+  ofav1 <- as.formula(paste(i, "depth", sep="~"))
+  print(ofav1)
+ adonis2(ofav1, data=ofavdf)->result4
+ print(result4)
+} 
+
+## O. Franksi
+distance_method_ofra <-c("bray_ofra","wuni_ofra")
+# Set the seed and run for loop 
+set.seed(111)
+for (i in distance_method_ofra){ 
+  ofra2 <- as.formula(paste(i, "depth", sep="~"))
+  print(ofra2)
+ adonis2(ofra2, data=ofradf)->result5
+ print(result5)
+} 
+
+# Post-hoc Pariwise Permutation MANOVAs with rarefied Samples
+## Within Species and depth comparison
+set.seed(111)
+rare_bray_posthoc <-pairwise.perm.manova(bray_all,time2_df$depth,nperm=1000,p.method = "BH")
+rare_uwni_posthoc <-pairwise.perm.manova(wuni_all,time2_df$depth,nperm=1000,p.method = "BH")
+
+
+# franksi between treatment
+set.seed(111)
+ofra_bray_posthoc <-pairwise.perm.manova(bray_ofra,ofradf$depth,nperm=1000,p.method = "BH")
+ofra_uwni_posthoc <-pairwise.perm.manova(wuni_ofra,ofradf$depth,nperm=1000,p.method = "BH")
+
+# faveoloata treatment
+set.seed(111)
+ofav_bray_posthoc <-pairwise.perm.manova(bray_ofav,ofavdf$depth,nperm=1000,p.method = "BH")
+ofav_uwni_posthoc <-pairwise.perm.manova(wuni_ofav,ofavdf$depth,nperm=1000,p.method = "BH")
+
+```
+
+# Principal Component Ordination Analysis
+## All samples
+```{r}
+## PCoA Plotting distance matrix for species and depth data
+
+##Ordinate the distance matrix
+rt.pcoa = ordinate(time2, method="PCoA", distance=bray_all)
+
+pcoa<-0
+pcoa <- plot_ordination(time2, rt.pcoa, shape = "species", color="treatment") + scale_color_manual(values=c("blue1","red1","blue1","red1"))+ geom_point(size=3) + theme_bw() + theme(plot.title = element_text(hjust = 0.5)) + stat_ellipse(level = 0.95,type = "norm",aes(group=treatment)) + theme(legend.text=element_text(size=12)) + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold"))) 
+                        
+
+## PCoA for Ofra between depth
+rt.pcoa1 = ordinate(ofra, method="PCoA", distance=wuni_ofra)
+pcoa1<-0
+pcoa1 <- plot_ordination(ofra, rt.pcoa1, color="depth", title =expression(paste(italic(" Orbicella franski")," Weighted Unifrac Distance PCoA across Depth"))) + theme_bw() + stat_ellipse(level = 0.95,type = "norm",aes(group=depth)) + theme(legend.text=element_text(size=12)) + scale_color_manual(values=c("blue1","#1F78B4"))+ geom_point(size=3) +  theme(plot.title = element_text(hjust = 0.5))  + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold")))
+
+
+## All Ofav
+rt.pcoa2 = ordinate(ofav, method="PCoA", distance=wuni_ofav)
+pcoa2<-0
+pcoa2 <- plot_ordination(ofav, rt.pcoa2, color="depth", title =expression(paste(italic(" Orbicella faveolata")," Weighted Unifrac Distance PCoA across Depth"))) + theme_bw() + stat_ellipse(level = 0.95,type = "norm",aes(group=depth)) + scale_color_manual(values=c("maroon","red1"))+ geom_point(size=3) +  theme(plot.title = element_text(hjust = 0.5))  + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold")))# 
+
+```
+
+# BAR PLOTS
+```{r}
+## Bar Plots Across Order and biological compartment
+## Transform sample counts into percentages
+ps.all = transform_sample_counts(time2, function(x) x/sum(x)*100)
+
+# agglomerate taxa to Order level for easier visualization 
+glom <- tax_glom(ps.all, taxrank = 'Order', NArm = TRUE)
+ps.melt <- psmelt(glom)
+
+# change to character for easy-adjusted level
+ps.melt <- ps.melt %>%
+  group_by(depth,species, Order) %>%
+  mutate(median=median(Abundance)) %>%
+  arrange(desc(median))
+
+# select group median > 1
+keep <- unique(ps.melt$Order[ps.melt$median >= 1])
+ps.melt$Order[!(ps.melt$Order %in% keep)] <- "< %1 (Other)"
+
+#to get the same rows together
+ps.melt_sum <- ps.melt %>%
+  group_by(depth,species,Order) %>%
+  summarise(Abundance = sum(Abundance), 
+            mean = sum(Abundance), .groups = "drop") %>%
+            mutate(Order= factor(Order),
+                   Order= fct_reorder(Order,mean, .desc = TRUE),
+                   Order= fct_shift(Order, n=1))
+# Then Plot Results
+bar_orbicella <-0
+bar_orbicella <-ggplot(ps.melt_sum, aes(x = depth, y = Abundance, fill = Order)) + 
+  geom_bar(stat = "identity", position="fill") + 
+  scale_fill_manual(name=NULL,
+  values = c(brewer.pal(12,"Paired"),"purple","yellow1","coral3","cyan2","pink4","maroon","blue1","black","gray")) +
+  labs( x=" treaments", y="Percent Relative Abundance (%)") + 
+  facet_wrap(~species, scales= "free_x", nrow=1) +  
+  theme_classic() +   theme(strip.background = element_blank(), axis.text.x.bottom = element_text(angle = 0) +
+  theme(axis.text=element_text(size=12), axis.title=element_text(size=14,face="bold"), plot.title = element_text(size = 14, face = "bold",hjust = 0.5),legend.text = element_text(size = 8), legend.box = "vertical") + theme(legend.text = element_text(size=12))+
+                  theme(legend.key.size = unit(.9, 'cm'))) 
+
+```
+
+# Differential abundance testing: Ofra
+```{r}
+# Differential Expression (DESeq) Analysis
+# Non-rarefied samples were used in this analysis. We wanted to maintain as much species diversity as possible and DESeq2 account for variation in sequence depth across samples.
+
+# agglomerate taxa to family level from a phyloseq object
+glom_ofra <- tax_glom(ofra_raw, taxrank = 'Family', NArm = TRUE)
+
+## Subset samples for variables
+glom_ofra.sub<- subset_samples(glom_ofra, treatment %in% c("Deep_Deep","Deep_Shallow"))
+
+## Create a deseq-formatted matrix
+ofrads <- phyloseq_to_deseq2(glom_ofra.sub, ~treatment)
+
+## Calculate geometric means prior to estimate size factor
+gm_mean = function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
+geoMeans = apply(counts(ofrads), 1, gm_mean)
+
+#Estimate size factor using geometric means calculation
+ofrads = estimateSizeFactors(ofrads, geoMeans = geoMeans)
+
+## Set the reference level * control 
+ofrads$treatment <- relevel(ofrads$treatment, ref = "Deep_Deep")
+
+##Run Deseq Command
+ofra_ds = DESeq(ofrads)
+
+# Set the alpha thresholdd
+alpha = 0.05
+
+## Evaluate Results
+res <- results(ofra_ds)
+
+##order results by the smallest p-value
+resOrdered<-res[order(res$padj, res$baseMean),] 
+
+# Summarize results
+summary(resOrdered)
+
+# Report number significant using adjusted p-values < 0.05. A total of 468 microbial families were tested in this analysis.
+sum(resOrdered$padj< 0.05, na.rm=TRUE) 
+
+##get differentially expressed genes 
+sig_res <- resOrdered[!is.na(resOrdered$padj),]
+sig_res = sig_res[sig_res$padj < 0.05,]
+
+# Create a table contains most significant features
+taxa_sig = rownames(sig_res[1:8, ])
+
+# Identify ASV Names set to Taxonomy
+res_tab = cbind(as(sig_res, "data.frame"), as(tax_table(glom_ofra)[rownames(sig_res), ], "matrix"))
+write.csv(res_tab,"Ofra_DA_Microbes_Family.csv",row.names = TRUE)
+
+
+```
+
+## Ofra Deseq BarPlot
+```{r}
+
+#Log-fold change figure
+theme_set(theme_bw())
+
+# Set results to variables for Deseq barplot 
+# Set to Family
+x = tapply(res_tab$log2FoldChange, res_tab$Family, function(x) max(x))
+x = sort(x,decreasing = TRUE)
+res_tab$Family = factor(as.character(res_tab$Family), levels=names(x))
+
+# Set to Order
+x = tapply(res_tab$log2FoldChange, res_tab$Order, function(x) max(x))
+x = sort(x,decreasing = TRUE)
+res_tab$Order = factor(as.character(res_tab$Order), levels=names(x))
+
+# Deseq barplot 
+DE_ofra_bar <-ggplot(data=res_tab, aes(x=Family, y=log2FoldChange, fill = Order))  +
+geom_bar(stat="identity", position = "stack") + labs( x=" Family", y="log2FoldChange") + coord_flip() +theme(plot.title = element_text(hjust = 0.5), axis.text=element_text(size=12,face="bold"),axis.title=element_text(size=12))
+
+## Create differential Expressions Dot Plot for OFRA
+ofra_cvt <- ggplot(res_tab, aes(y=Order, x=log2FoldChange, color=Family)) + 
+  geom_vline(xintercept = 0.0, color = "black", size = 0.8) +
+  geom_point(size=6) + 
+ theme(text = element_text(size = 15))   +
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5)) + labs(title = "Differentially Abundant Taxa in Orbicella franksi shallow vs Deep")
+
+
+
+```
