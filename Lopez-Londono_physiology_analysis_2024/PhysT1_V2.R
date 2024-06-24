@@ -3,12 +3,13 @@
 
 #Lopez-Londoño and Howe, et al.
 
-setwd("/Users/tomaslopez/Dropbox/My Mac (TOMASs-MacBook-Pro.local)/Desktop/PhD_PennState/Projects/TransplantsUSVI/Data/PhysAnalysisR")
+# set working directory to  folder containing required excel files
 getwd()
-list.files()
 
 library("xlsx")
+library("lsmeans")
 
+# Import Data
 PhysT1 <- read.xlsx("AllPhysUSVI_T1.xlsx", sheetName="AllPhysUSVI_T1")
 PhysMeans <- read.xlsx("AllPhysUSVI_T1.xlsx", sheetName="Means")
 FvFm <- read.xlsx("FvFmUSVI_T1.xlsx", sheetName="FvFmT1")
@@ -20,10 +21,7 @@ FvFmGrad <- read.xlsx("PSIIgradient.xlsx", sheetName="FvFm")
 dFFmGrad <- read.xlsx("PSIIgradient.xlsx", sheetName="dFFm.")
 QmGrad <- read.xlsx("PSIIgradient.xlsx", sheetName="Qm")
 
-setwd("/Users/tomaslopez/Dropbox/My Mac (TOMASs-MacBook-Pro.local)/Desktop/PhD_PennState/Projects/TransplantsUSVI/Data/Light & Temp/Hobos Onset")
 temp <- read.xlsx("TempLongFormat.xlsx", sheetName="LongFormat")
-
-setwd("/Users/tomaslopez/Dropbox/My Mac (TOMASs-MacBook-Pro.local)/Desktop/PhD_PennState/Projects/TransplantsUSVI/Data/Light & Temp/Odyssey")
 irrad <- read.xlsx("Both sites-8 days.xlsx", sheetName="DLI")
 
 #Test for normality
