@@ -1,6 +1,6 @@
 ---
 title: "Robustness Tradeoff Prokaryotic Community Analysis Workflow"
-author: "Colin Howe, Sofia Roitman, & Amanda Badai"
+author: "Colin Howe, Amanda Badai and Sofia Roitman"
 date: "`r Sys.Date()`"
 output: html_document
 ---
@@ -8,8 +8,6 @@ output: html_document
 # First, set your working directory. 
 ```{r}
 # Command for setting your work directory
-setwd("C:/Users/Colin Howe/Desktop/PSU Doctoral Program/GCMP_Working/Robustness-trade-offs")
-
 getwd()
 ```
 
