@@ -114,7 +114,7 @@ phylo_Proto <- subset_taxa(phylo_noNA, Family != "Unclassified Proteobacteria") 
 ## Remove samples that contain less than 1 reads
 phylo_nclass = prune_samples(sample_sums(phylo_Proto)>1, phylo_Proto) ## removes two samples
 
-##Rarefication this will be used for statistical comparative analysis at 5000 reads depth we retained 24.5% of the reads and 89% of the sample data
+##Rarefication this will be used for statistical comparative analysis at 5000 reads depth we retained 13.67% of the reads and 95% of the sample data
 orb.rarefied <- rarefy_even_depth(phylo_nclass, rngseed=111, sample.size=5000)
 
 orb_phylo
@@ -246,13 +246,13 @@ pcoa <- plot_ordination(time2, rt.pcoa, shape = "species", color="treatment") + 
 ## PCoA for Ofra between depth
 rt.pcoa1 = ordinate(ofra, method="PCoA", distance=wuni_ofra)
 pcoa1<-0
-pcoa1 <- plot_ordination(ofra, rt.pcoa1, shape = "depth", color="depth",title =expression(paste(italic(" Orbicella franski")," Weighted Unifrac Distance PCoA across Depth"))) + theme_bw() + stat_ellipse(level = 0.95,type = "norm",aes(group=depth)) + theme(legend.text=element_text(size=12)) + scale_color_manual(values=c("blue1","#1F78B4"))+ geom_point(size=3) +  theme(plot.title = element_text(hjust = 0.5))  + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold")))
+pcoa1 <- plot_ordination(ofra, rt.pcoa1, shape = "depth", color="depth",title =expression(paste(italic(" Orbicella franski")," Weighted Unifrac Distance PCoA across Depth"))) + theme_bw() + stat_ellipse(level = 0.95,type = "norm",aes(group=depth)) + theme(legend.text=element_text(size=12)) + scale_color_manual(values=c("blue1","blue1"))+ geom_point(size=3) +  theme(plot.title = element_text(hjust = 0.5))  + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold")))
 
 
 ## All Ofav
 rt.pcoa2 = ordinate(ofav, method="PCoA", distance=wuni_ofav)
 pcoa2<-0
-pcoa2 <- plot_ordination(ofav, rt.pcoa2, shape = "depth", color="depth", title =expression(paste(italic(" Orbicella faveolata")," Weighted Unifrac Distance PCoA across Depth"))) + theme_bw() + stat_ellipse(level = 0.95,type = "norm",aes(group=depth)) + scale_color_manual(values=c("maroon","red1"))+ geom_point(size=3) +  theme(plot.title = element_text(hjust = 0.5))  + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold")))# 
+pcoa2 <- plot_ordination(ofav, rt.pcoa2, shape = "depth", color="depth", title =expression(paste(italic(" Orbicella faveolata")," Weighted Unifrac Distance PCoA across Depth"))) + theme_bw() + stat_ellipse(level = 0.95,type = "norm",aes(group=depth)) + scale_color_manual(values=c("red1","red1"))+ geom_point(size=3) +  theme(plot.title = element_text(hjust = 0.5))  + theme(axis.text=element_text(size=12, face = "bold"), axis.title=element_text(size=14,face="bold") + theme(text = element_text(size = 20,face = "bold")))# 
 
 ```
 
