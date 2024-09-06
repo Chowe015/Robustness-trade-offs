@@ -108,6 +108,10 @@ phylo_noNA <- subset_taxa(orb_phylo, !Phylum %in% c("NA","Unclassified Unassigne
                                                     "Unclassified Archaea") &
                                   Family  != ("Mitochondria") &
                                     Class   != ("Chloroplast")) ## removed 1678 ASVs
+
+# Check to make sure it worked
+table(tax_table(phylo_noNA)[,"Kingdom"])
+
 #remove the outliers
 phylo_Proto <- subset_taxa(phylo_noNA, Family != "Unclassified Proteobacteria") ## removed 232 ASVs 
 
